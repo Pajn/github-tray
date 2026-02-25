@@ -1,0 +1,48 @@
+[package]
+name = "github-tray-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Core library for GitHub Tray - shared between platforms via UniFFI"
+
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+name = "github_tray_core"
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[[bin]]
+name = "github-tray-cli"
+path = "src/bin/cli.rs"
+
+[dependencies]
+uniffi = { version = "0.28", features = ["cli"] }
+tokio = { version = "1", features = [
+  "rt-multi-thread",
+  "macros",
+  "sync",
+  "time",
+] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+dirs = "5"
+thiserror = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[profile.release]
+opt-level = 'z'
+lto = true
+strip = true
+panic = "abort"
+codegen-units = 1

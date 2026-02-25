@@ -1,0 +1,93 @@
+name: GitHubTray
+options:
+  bundleIdPrefix: com.github-tray
+  deploymentTarget:
+    macOS: "14.0"
+  generateEmptyDirectories: true
+  groupSortPosition: top
+
+settings:
+  base:
+    PRODUCT_NAME: GitHubTray
+    PRODUCT_BUNDLE_IDENTIFIER: com.github-tray.app
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: NO
+    CODE_SIGN_IDENTITY: "-"
+    INFOPLIST_FILE: GitHubTray/Info.plist
+
+targets:
+  GitHubTray:
+    type: application
+    platform: macOS
+    sources:
+      - path: GitHubTray/Sources
+        excludes:
+          - "**/.DS_Store"
+          - "github_tray_core.swift"
+      - path: GitHubTray/Resources
+        buildPhase: resources
+        excludes:
+          - "**/.DS_Store"
+      - path: GitHubTray/Generated/github_tray_core.swift
+        optional: true
+        type: file
+    settings:
+      base:
+        INFOPLIST_FILE: GitHubTray/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: com.github-tray.app
+        LD_RUNPATH_SEARCH_PATHS:
+          - "$(inherited)"
+          - "@executable_path/../Frameworks"
+        LIBRARY_SEARCH_PATHS:
+          - "$(inherited)"
+          - "$(SRCROOT)/GitHubTray/github_tray_core.xcframework/macos-arm64"
+        OTHER_LDFLAGS:
+          - "-lgithub_tray_core"
+          - "-framework"
+          - "Cocoa"
+          - "-framework"
+          - "SystemConfiguration"
+          - "-framework"
+          - "Security"
+          - "-liconv"
+        SWIFT_INCLUDE_PATHS:
+          - "$(SRCROOT)/GitHubTray/Generated"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/GitHubTray/Generated"
+    entitlements:
+      path: GitHubTray/GitHubTray.entitlements
+      properties:
+        com.apple.security.app-sandbox: false
+    preBuildScripts:
+      - name: Build Rust Core
+        script: |
+          set -e
+          cd "$SRCROOT/.."
+
+          rm -rf "$SRCROOT/GitHubTray/github_tray_core.xcframework"
+
+          cargo build -p github-tray-core --release --target aarch64-apple-darwin
+
+          mkdir -p "$SRCROOT/GitHubTray/Generated"
+          cargo run -p github-tray-core --bin uniffi-bindgen generate \
+            --library target/aarch64-apple-darwin/release/libgithub_tray_core.a \
+            --language swift \
+            --out-dir "$SRCROOT/GitHubTray/Generated"
+
+          if [ -f "$SRCROOT/GitHubTray/Generated/github_tray_coreFFI.modulemap" ]; then
+            mv "$SRCROOT/GitHubTray/Generated/github_tray_coreFFI.modulemap" \
+               "$SRCROOT/GitHubTray/Generated/module.modulemap"
+          fi
+
+          xcodebuild -create-xcframework \
+            -library target/aarch64-apple-darwin/release/libgithub_tray_core.a \
+            -headers "$SRCROOT/GitHubTray/Generated" \
+            -output "$SRCROOT/GitHubTray/github_tray_core.xcframework"
+        basedOnDependencyAnalysis: false
+        showEnvVars: false
+        outputFiles:
+          - $(SRCROOT)/GitHubTray/Generated/github_tray_core.swift
+          - $(SRCROOT)/GitHubTray/Generated/module.modulemap
+          - $(SRCROOT)/GitHubTray/github_tray_core.xcframework
