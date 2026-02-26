@@ -141,6 +141,16 @@ class PRMenuItemView: NSView {
     
     private func updateStatusDisplay() {
         switch currentStatus {
+        case "review_changes_requested":
+            statusLabel.stringValue = "✓"
+            statusLabel.textColor = NSColor.systemGreen
+            statusLabel.isHidden = false
+            statusIcon.isHidden = true
+        case "review_approved":
+            statusLabel.stringValue = "✓"
+            statusLabel.textColor = NSColor.systemGreen
+            statusLabel.isHidden = false
+            statusIcon.isHidden = true
         case "success":
             statusLabel.stringValue = "✓"
             statusLabel.textColor = NSColor.systemGreen

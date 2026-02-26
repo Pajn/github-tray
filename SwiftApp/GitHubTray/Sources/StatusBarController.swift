@@ -119,6 +119,12 @@ class StatusBarController: NSObject {
             statusItem.menu = menu
             return
         }
+
+        let approvedMyOpen = state.prs.myOpen.filter { $0.status == "review_approved" }
+        let returnedToYouMyOpen = state.prs.myOpen.filter { $0.status == "review_changes_requested" }
+        let generalMyOpen = state.prs.myOpen.filter {
+            $0.status != "review_approved" && $0.status != "review_changes_requested"
+        }
         
         // Review Requested section
         if !state.prs.reviewRequested.isEmpty {
@@ -129,10 +135,28 @@ class StatusBarController: NSObject {
             menu.addItem(.separator())
         }
         
+        // Approved section
+        if !approvedMyOpen.isEmpty {
+            menu.addItem(createHeader("Approved (\(approvedMyOpen.count))"))
+            for pr in approvedMyOpen {
+                menu.addItem(createPRItem(pr))
+            }
+            menu.addItem(.separator())
+        }
+
+        // Returned to You section
+        if !returnedToYouMyOpen.isEmpty {
+            menu.addItem(createHeader("Returned to You (\(returnedToYouMyOpen.count))"))
+            for pr in returnedToYouMyOpen {
+                menu.addItem(createPRItem(pr))
+            }
+            menu.addItem(.separator())
+        }
+
         // My Open PRs section
-        if !state.prs.myOpen.isEmpty {
-            menu.addItem(createHeader("My Open PRs (\(state.prs.myOpen.count))"))
-            for pr in state.prs.myOpen {
+        if !generalMyOpen.isEmpty {
+            menu.addItem(createHeader("My Open PRs (\(generalMyOpen.count))"))
+            for pr in generalMyOpen {
                 menu.addItem(createPRItem(pr))
             }
             menu.addItem(.separator())
@@ -149,7 +173,9 @@ class StatusBarController: NSObject {
         
         // No PRs message
         if state.prs.reviewRequested.isEmpty
-            && state.prs.myOpen.isEmpty
+            && approvedMyOpen.isEmpty
+            && returnedToYouMyOpen.isEmpty
+            && generalMyOpen.isEmpty
             && state.prs.mentionedIn.isEmpty
         {
             let item = menu.addItem(withTitle: "No pull requests", action: nil, keyEquivalent: "")

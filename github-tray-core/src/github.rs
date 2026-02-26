@@ -83,7 +83,11 @@ impl GitHubClient {
                 let SearchNode::PullRequest(pr) = node;
                 let updated_at = parse_datetime(&pr.updated_at);
                 let created_at = parse_datetime(&pr.created_at);
-                let status = map_status(&pr.commits);
+                let status = map_status(
+                    &pr.commits,
+                    pr.review_decision.as_deref(),
+                    pr.review_requests.total_count > 0,
+                );
 
                 Some(PullRequest {
                     id: pr.id,
@@ -119,17 +123,32 @@ query($query: String!) {
         isDraft
         createdAt
         updatedAt
+        reviewDecision
         author {
           login
         }
         repository {
           nameWithOwner
         }
+        reviewRequests(first: 1) {
+          totalCount
+        }
         commits(last: 1) {
           nodes {
             commit {
               statusCheckRollup {
                 state
+                contexts(first: 100) {
+                  nodes {
+                    __typename
+                    ... on CheckRun {
+                      status
+                    }
+                    ... on StatusContext {
+                      state
+                    }
+                  }
+                }
               }
             }
           }
@@ -190,8 +209,12 @@ struct PullRequestNode {
     created_at: String,
     #[serde(rename = "updatedAt")]
     updated_at: String,
+    #[serde(rename = "reviewDecision")]
+    review_decision: Option<String>,
     author: Option<Author>,
     repository: Repository,
+    #[serde(rename = "reviewRequests")]
+    review_requests: ReviewRequestConnection,
     commits: CommitConnection,
 }
 
@@ -204,6 +227,12 @@ struct Author {
 struct Repository {
     #[serde(rename = "nameWithOwner")]
     name_with_owner: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct ReviewRequestConnection {
+    #[serde(rename = "totalCount")]
+    total_count: i32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -225,6 +254,29 @@ struct Commit {
 #[derive(Debug, Deserialize)]
 struct StatusCheckRollup {
     state: String,
+    contexts: Option<StatusCheckContexts>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatusCheckContexts {
+    nodes: Vec<StatusCheckContextNode>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(tag = "__typename")]
+enum StatusCheckContextNode {
+    CheckRun(CheckRunContext),
+    StatusContext(StatusContextNode),
+}
+
+#[derive(Debug, Deserialize)]
+struct CheckRunContext {
+    status: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct StatusContextNode {
+    state: String,
 }
 
 fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
@@ -233,14 +285,23 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
         .map(|dt| dt.with_timezone(&Utc))
 }
 
-fn map_status(commits: &CommitConnection) -> String {
-    let state = commits
+fn map_status(
+    commits: &CommitConnection,
+    review_decision: Option<&str>,
+    has_outstanding_review_requests: bool,
+) -> String {
+    let rollup = commits
         .nodes
         .first()
-        .and_then(|node| node.commit.status_check_rollup.as_ref())
-        .map(|rollup| rollup.state.as_str());
+        .and_then(|node| node.commit.status_check_rollup.as_ref());
 
-    match state {
+    if has_running_checks(rollup) {
+        return "pending".to_string();
+    }
+
+    let state = rollup.map(|rollup| rollup.state.as_str());
+
+    let check_status = match state {
         Some("SUCCESS") => "success".to_string(),
         Some("FAILURE") | Some("ERROR") | Some("TIMED_OUT") | Some("ACTION_REQUIRED") => {
             "failure".to_string()
@@ -254,5 +315,37 @@ fn map_status(commits: &CommitConnection) -> String {
         | Some("STALE") => "pending".to_string(),
         Some("NEUTRAL") | None => "none".to_string(),
         _ => "none".to_string(),
+    };
+
+    if check_status == "success" {
+        if has_outstanding_review_requests {
+            return check_status;
+        }
+
+        return match review_decision {
+            Some("CHANGES_REQUESTED") => "review_changes_requested".to_string(),
+            Some("APPROVED") => "review_approved".to_string(),
+            _ => check_status,
+        };
     }
+
+    check_status
+}
+
+fn has_running_checks(rollup: Option<&StatusCheckRollup>) -> bool {
+    let Some(rollup) = rollup else {
+        return false;
+    };
+
+    let Some(contexts) = rollup.contexts.as_ref() else {
+        return false;
+    };
+
+    contexts.nodes.iter().any(|node| match node {
+        StatusCheckContextNode::CheckRun(check_run) => matches!(
+            check_run.status.as_str(),
+            "IN_PROGRESS" | "QUEUED" | "PENDING" | "WAITING" | "REQUESTED"
+        ),
+        StatusCheckContextNode::StatusContext(context) => context.state == "PENDING",
+    })
 }
