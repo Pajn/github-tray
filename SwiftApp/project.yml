@@ -60,34 +60,3 @@ targets:
       path: GitHubTray/GitHubTray.entitlements
       properties:
         com.apple.security.app-sandbox: false
-    preBuildScripts:
-      - name: Build Rust Core
-        script: |
-          set -e
-          cd "$SRCROOT/.."
-
-          rm -rf "$SRCROOT/GitHubTray/github_tray_core.xcframework"
-
-          cargo build -p github-tray-core --release --target aarch64-apple-darwin
-
-          mkdir -p "$SRCROOT/GitHubTray/Generated"
-          cargo run -p github-tray-core --bin uniffi-bindgen generate \
-            --library target/aarch64-apple-darwin/release/libgithub_tray_core.a \
-            --language swift \
-            --out-dir "$SRCROOT/GitHubTray/Generated"
-
-          if [ -f "$SRCROOT/GitHubTray/Generated/github_tray_coreFFI.modulemap" ]; then
-            mv "$SRCROOT/GitHubTray/Generated/github_tray_coreFFI.modulemap" \
-               "$SRCROOT/GitHubTray/Generated/module.modulemap"
-          fi
-
-          xcodebuild -create-xcframework \
-            -library target/aarch64-apple-darwin/release/libgithub_tray_core.a \
-            -headers "$SRCROOT/GitHubTray/Generated" \
-            -output "$SRCROOT/GitHubTray/github_tray_core.xcframework"
-        basedOnDependencyAnalysis: false
-        showEnvVars: false
-        outputFiles:
-          - $(SRCROOT)/GitHubTray/Generated/github_tray_core.swift
-          - $(SRCROOT)/GitHubTray/Generated/module.modulemap
-          - $(SRCROOT)/GitHubTray/github_tray_core.xcframework

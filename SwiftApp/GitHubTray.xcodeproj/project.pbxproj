@@ -14,6 +14,8 @@
 		BD2C1612F793CE3ECCDDBF96 /* GitHubTrayEventHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59CDC832B53255E35671851 /* GitHubTrayEventHandler.swift */; };
 		C98D7D6E898919BADDFE0ABC /* PRMenuItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 064419DD6800AC098AF4103E /* PRMenuItemView.swift */; };
 		CAC79450E568887A8C8CF312 /* StatusBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB7ABEE9BA9ADFF4F3D63238 /* StatusBarController.swift */; };
+		D1DF345FB674336B1F18D791 /* pull-request-draft.svg in Resources */ = {isa = PBXBuildFile; fileRef = 83850B0F317299542D084933 /* pull-request-draft.svg */; };
+		E8E603BDB06BE0BD7526B97A /* pull-request-open.svg in Resources */ = {isa = PBXBuildFile; fileRef = CAFF8F13EE2B7B52C47F0A96 /* pull-request-open.svg */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,7 +23,9 @@
 		0C9D62F320BD5A51FAE0D1AB /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		71AF967C9711EB45A4668BE2 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 		7CAE8739327CDC544183C2CD /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		83850B0F317299542D084933 /* pull-request-draft.svg */ = {isa = PBXFileReference; path = "pull-request-draft.svg"; sourceTree = "<group>"; };
 		BB7ABEE9BA9ADFF4F3D63238 /* StatusBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBarController.swift; sourceTree = "<group>"; };
+		CAFF8F13EE2B7B52C47F0A96 /* pull-request-open.svg */ = {isa = PBXFileReference; path = "pull-request-open.svg"; sourceTree = "<group>"; };
 		DC378EAFDD25F78D63072BCC /* github_tray_core.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = github_tray_core.swift; sourceTree = "<group>"; };
 		E29E477D07E375A7AACD329F /* GitHubTray.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GitHubTray.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E59CDC832B53255E35671851 /* GitHubTrayEventHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GitHubTrayEventHandler.swift; sourceTree = "<group>"; };
@@ -72,6 +76,8 @@
 			isa = PBXGroup;
 			children = (
 				0C9D62F320BD5A51FAE0D1AB /* Assets.xcassets */,
+				83850B0F317299542D084933 /* pull-request-draft.svg */,
+				CAFF8F13EE2B7B52C47F0A96 /* pull-request-open.svg */,
 			);
 			name = Resources;
 			path = GitHubTray/Resources;
@@ -84,7 +90,6 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 48BF456FCC8FD470B4178899 /* Build configuration list for PBXNativeTarget "GitHubTray" */;
 			buildPhases = (
-				88E431BE9654AD84C073792F /* Build Rust Core */,
 				D54B801AE0ED67EF614544AF /* Sources */,
 				0EAD6BAFD3EFF464CDF4B180 /* Resources */,
 			);
@@ -138,36 +143,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				07A99E423071FE7BCCE2D8C1 /* Assets.xcassets in Resources */,
+				D1DF345FB674336B1F18D791 /* pull-request-draft.svg in Resources */,
+				E8E603BDB06BE0BD7526B97A /* pull-request-open.svg in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		88E431BE9654AD84C073792F /* Build Rust Core */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "Build Rust Core";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(SRCROOT)/GitHubTray/Generated/github_tray_core.swift",
-				"$(SRCROOT)/GitHubTray/Generated/module.modulemap",
-				"$(SRCROOT)/GitHubTray/github_tray_core.xcframework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "set -e\ncd \"$SRCROOT/..\"\n\nrm -rf \"$SRCROOT/GitHubTray/github_tray_core.xcframework\"\n\ncargo build -p github-tray-core --release --target aarch64-apple-darwin\n\nmkdir -p \"$SRCROOT/GitHubTray/Generated\"\ncargo run -p github-tray-core --bin uniffi-bindgen generate \\\n  --library target/aarch64-apple-darwin/release/libgithub_tray_core.a \\\n  --language swift \\\n  --out-dir \"$SRCROOT/GitHubTray/Generated\"\n\nif [ -f \"$SRCROOT/GitHubTray/Generated/github_tray_coreFFI.modulemap\" ]; then\n  mv \"$SRCROOT/GitHubTray/Generated/github_tray_coreFFI.modulemap\" \\\n     \"$SRCROOT/GitHubTray/Generated/module.modulemap\"\nfi\n\nxcodebuild -create-xcframework \\\n  -library target/aarch64-apple-darwin/release/libgithub_tray_core.a \\\n  -headers \"$SRCROOT/GitHubTray/Generated\" \\\n  -output \"$SRCROOT/GitHubTray/github_tray_core.xcframework\"\n";
-			showEnvVarsInLog = 0;
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D54B801AE0ED67EF614544AF /* Sources */ = {
