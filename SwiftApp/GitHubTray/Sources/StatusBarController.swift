@@ -3,9 +3,13 @@ import os.log
 
 private final class PRMenuPayload: NSObject {
     let htmlUrl: String
+    let prId: String?
+    let updatedAt: String?
     
-    init(htmlUrl: String) {
+    init(htmlUrl: String, prId: String? = nil, updatedAt: String? = nil) {
         self.htmlUrl = htmlUrl
+        self.prId = prId
+        self.updatedAt = updatedAt
     }
 }
 
@@ -15,6 +19,8 @@ class StatusBarController: NSObject {
     private var currentState: AppState?
     private var eventHandler: GitHubTrayEventHandler!
     private let logger = OSLog(subsystem: "com.github-tray.app", category: "StatusBarController")
+    private let ignoredReviewRequestsDefaultsKey = "ignoredReviewRequestsById"
+    private var ignoredReviewRequestsById: [String: String] = [:]
     
     private let menuBarIcon: NSImage = {
         guard let image = NSImage(named: "menuTemplate") else {
@@ -28,6 +34,7 @@ class StatusBarController: NSObject {
     override init() {
         super.init()
         os_log("StatusBarController init started", log: logger, type: .info)
+        ignoredReviewRequestsById = loadIgnoredReviewRequests()
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem.button?.image = menuBarIcon
@@ -62,6 +69,7 @@ class StatusBarController: NSObject {
             state.myPrCount,
             state.mentionedCount
         )
+        reconcileIgnoredReviewRequests(with: state.prs.reviewRequested)
         currentState = state
         updateMenuBar()
         rebuildMenu()
@@ -99,13 +107,17 @@ class StatusBarController: NSObject {
             statusItem.button?.title = "!"
             statusItem.button?.toolTip = "GitHub Tray - Error: \(error)"
             return
-        } else if state.reviewCount > 0 {
-            statusItem.button?.title = "\(state.reviewCount)"
         } else {
-            statusItem.button?.title = ""
+            let visibleReviewCount = visibleReviewRequestedPRs(for: state).count
+            if visibleReviewCount > 0 {
+                statusItem.button?.title = "\(visibleReviewCount)"
+            } else {
+                statusItem.button?.title = ""
+            }
         }
         
-        statusItem.button?.toolTip = "GitHub Tray - \(state.reviewCount) review requested, \(state.myPrCount) my PRs, \(state.mentionedCount) mentioned"
+        let visibleReviewCount = visibleReviewRequestedPRs(for: state).count
+        statusItem.button?.toolTip = "GitHub Tray - \(visibleReviewCount) review requested, \(state.myPrCount) my PRs, \(state.mentionedCount) mentioned"
         os_log("Menu bar title updated to: %{public}@", log: logger, type: .info, statusItem.button?.title ?? "nil")
     }
     
@@ -125,12 +137,13 @@ class StatusBarController: NSObject {
         let generalMyOpen = state.prs.myOpen.filter {
             $0.status != "review_approved" && $0.status != "review_changes_requested"
         }
+        let visibleReviewRequested = visibleReviewRequestedPRs(for: state)
         
         // Review Requested section
-        if !state.prs.reviewRequested.isEmpty {
-            menu.addItem(createHeader("Review Requested (\(state.prs.reviewRequested.count))"))
-            for pr in state.prs.reviewRequested {
-                menu.addItem(createPRItem(pr))
+        if !visibleReviewRequested.isEmpty {
+            menu.addItem(createHeader("Review Requested (\(visibleReviewRequested.count))"))
+            for pr in visibleReviewRequested {
+                menu.addItem(createReviewRequestedPRItem(pr))
             }
             menu.addItem(.separator())
         }
@@ -172,7 +185,7 @@ class StatusBarController: NSObject {
         }
         
         // No PRs message
-        if state.prs.reviewRequested.isEmpty
+        if visibleReviewRequested.isEmpty
             && approvedMyOpen.isEmpty
             && returnedToYouMyOpen.isEmpty
             && generalMyOpen.isEmpty
@@ -214,6 +227,25 @@ class StatusBarController: NSObject {
         
         return item
     }
+
+    private func createReviewRequestedPRItem(_ pr: PullRequest) -> NSMenuItem {
+        let item = NSMenuItem(title: "\(pr.title) · \(pr.repository) · \(pr.displayTime)", action: nil, keyEquivalent: "")
+        let payload = PRMenuPayload(htmlUrl: pr.htmlUrl, prId: pr.id, updatedAt: pr.updatedAt)
+
+        let submenu = NSMenu(title: pr.title)
+        let openItem = NSMenuItem(title: "Open", action: #selector(openPR(_:)), keyEquivalent: "")
+        openItem.target = self
+        openItem.representedObject = payload
+        submenu.addItem(openItem)
+
+        let ignoreItem = NSMenuItem(title: "Ignore", action: #selector(ignoreReviewRequestedPR(_:)), keyEquivalent: "")
+        ignoreItem.target = self
+        ignoreItem.representedObject = payload
+        submenu.addItem(ignoreItem)
+
+        item.submenu = submenu
+        return item
+    }
     
     private func createAutostartItem(_ enabled: Bool) -> NSMenuItem {
         let title = enabled ? "✓ Autostart" : "Autostart"
@@ -251,6 +283,17 @@ class StatusBarController: NSObject {
         }
         NSWorkspace.shared.open(url)
     }
+
+    @objc func ignoreReviewRequestedPR(_ sender: NSMenuItem) {
+        guard let payload = sender.representedObject as? PRMenuPayload else { return }
+        guard let prId = payload.prId, let updatedAt = payload.updatedAt else { return }
+        os_log("Ignore review requested PR: %{public}@", log: logger, type: .info, prId)
+
+        ignoredReviewRequestsById[prId] = updatedAt
+        saveIgnoredReviewRequests()
+        updateMenuBar()
+        rebuildMenu()
+    }
     
     @objc func toggleAutostart() {
         os_log("Toggle autostart", log: logger, type: .info)
@@ -264,5 +307,49 @@ class StatusBarController: NSObject {
     @objc func quit() {
         os_log("Quit requested", log: logger, type: .info)
         NSApp.terminate(nil)
+    }
+
+    private func visibleReviewRequestedPRs(for state: AppState) -> [PullRequest] {
+        return state.prs.reviewRequested.filter { pr in
+            guard let ignoredUpdatedAt = ignoredReviewRequestsById[pr.id] else {
+                return true
+            }
+            return ignoredUpdatedAt != pr.updatedAt
+        }
+    }
+
+    private func reconcileIgnoredReviewRequests(with reviewRequested: [PullRequest]) {
+        guard !ignoredReviewRequestsById.isEmpty else { return }
+
+        let currentById = Dictionary(uniqueKeysWithValues: reviewRequested.map { ($0.id, $0.updatedAt) })
+        var changed = false
+
+        for (id, ignoredUpdatedAt) in ignoredReviewRequestsById {
+            guard let currentUpdatedAt = currentById[id] else {
+                ignoredReviewRequestsById.removeValue(forKey: id)
+                changed = true
+                continue
+            }
+
+            if currentUpdatedAt != ignoredUpdatedAt {
+                ignoredReviewRequestsById.removeValue(forKey: id)
+                changed = true
+            }
+        }
+
+        if changed {
+            saveIgnoredReviewRequests()
+        }
+    }
+
+    private func loadIgnoredReviewRequests() -> [String: String] {
+        guard let value = UserDefaults.standard.dictionary(forKey: ignoredReviewRequestsDefaultsKey) as? [String: String] else {
+            return [:]
+        }
+        return value
+    }
+
+    private func saveIgnoredReviewRequests() {
+        UserDefaults.standard.set(ignoredReviewRequestsById, forKey: ignoredReviewRequestsDefaultsKey)
     }
 }
