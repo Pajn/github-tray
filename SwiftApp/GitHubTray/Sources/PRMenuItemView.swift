@@ -3,7 +3,7 @@ import Cocoa
 class PRMenuItemView: NSView {
     
     private static let menuItemHeight: CGFloat = 22
-    private static let minimumMenuWidth: CGFloat = 280
+    private static let minimumMenuWidth: CGFloat = 360
     
     private let leftMargin: CGFloat = 20
     private let rightMargin: CGFloat = 12
