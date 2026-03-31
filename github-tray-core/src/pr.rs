@@ -14,6 +14,7 @@ pub struct PullRequest {
     pub updated_at: String,
     pub display_time: String,
     pub status: String,
+    pub review_bucket: String,
     pub is_draft: bool,
 }
 

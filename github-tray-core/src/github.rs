@@ -83,8 +83,8 @@ impl GitHubClient {
                 let SearchNode::PullRequest(pr) = node;
                 let updated_at = parse_datetime(&pr.updated_at);
                 let created_at = parse_datetime(&pr.created_at);
-                let status = map_status(
-                    &pr.commits,
+                let status = map_status(&pr.commits);
+                let review_bucket = map_review_bucket(
                     pr.review_decision.as_deref(),
                     pr.review_requests.total_count > 0,
                 );
@@ -100,6 +100,7 @@ impl GitHubClient {
                     updated_at: updated_at.map(|dt| dt.to_rfc3339()).unwrap_or_default(),
                     display_time: format_relative_time(updated_at),
                     status,
+                    review_bucket,
                     is_draft: pr.is_draft,
                 })
             })
@@ -285,11 +286,7 @@ fn parse_datetime(value: &str) -> Option<DateTime<Utc>> {
         .map(|dt| dt.with_timezone(&Utc))
 }
 
-fn map_status(
-    commits: &CommitConnection,
-    review_decision: Option<&str>,
-    has_outstanding_review_requests: bool,
-) -> String {
+fn map_status(commits: &CommitConnection) -> String {
     let rollup = commits
         .nodes
         .first()
@@ -301,7 +298,7 @@ fn map_status(
 
     let state = rollup.map(|rollup| rollup.state.as_str());
 
-    let check_status = match state {
+    match state {
         Some("SUCCESS") => "success".to_string(),
         Some("FAILURE") | Some("ERROR") | Some("TIMED_OUT") | Some("ACTION_REQUIRED") => {
             "failure".to_string()
@@ -315,21 +312,15 @@ fn map_status(
         | Some("STALE") => "pending".to_string(),
         Some("NEUTRAL") | None => "none".to_string(),
         _ => "none".to_string(),
-    };
-
-    if check_status == "success" {
-        if has_outstanding_review_requests {
-            return check_status;
-        }
-
-        return match review_decision {
-            Some("CHANGES_REQUESTED") => "review_changes_requested".to_string(),
-            Some("APPROVED") => "review_approved".to_string(),
-            _ => check_status,
-        };
     }
+}
 
-    check_status
+fn map_review_bucket(review_decision: Option<&str>, has_outstanding_review_requests: bool) -> String {
+    match review_decision {
+        Some("APPROVED") if !has_outstanding_review_requests => "approved".to_string(),
+        Some("CHANGES_REQUESTED") if !has_outstanding_review_requests => "returned_to_you".to_string(),
+        _ => "none".to_string(),
+    }
 }
 
 fn has_running_checks(rollup: Option<&StatusCheckRollup>) -> bool {
@@ -348,4 +339,24 @@ fn has_running_checks(rollup: Option<&StatusCheckRollup>) -> bool {
         ),
         StatusCheckContextNode::StatusContext(context) => context.state == "PENDING",
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::map_review_bucket;
+
+    #[test]
+    fn approved_pr_with_no_pending_reviews_stays_approved() {
+        assert_eq!(map_review_bucket(Some("APPROVED"), false), "approved");
+    }
+
+    #[test]
+    fn approved_pr_with_pending_review_request_is_not_approved() {
+        assert_eq!(map_review_bucket(Some("APPROVED"), true), "none");
+    }
+
+    #[test]
+    fn changes_requested_with_pending_review_request_is_not_returned_to_you() {
+        assert_eq!(map_review_bucket(Some("CHANGES_REQUESTED"), true), "none");
+    }
 }

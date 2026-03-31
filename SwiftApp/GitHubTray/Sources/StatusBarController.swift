@@ -132,10 +132,10 @@ class StatusBarController: NSObject {
             return
         }
 
-        let approvedMyOpen = state.prs.myOpen.filter { $0.status == "review_approved" }
-        let returnedToYouMyOpen = state.prs.myOpen.filter { $0.status == "review_changes_requested" }
+        let approvedMyOpen = state.prs.myOpen.filter { $0.reviewBucket == "approved" }
+        let returnedToYouMyOpen = state.prs.myOpen.filter { $0.reviewBucket == "returned_to_you" }
         let generalMyOpen = state.prs.myOpen.filter {
-            $0.status != "review_approved" && $0.status != "review_changes_requested"
+            $0.reviewBucket != "approved" && $0.reviewBucket != "returned_to_you"
         }
         let visibleReviewRequested = visibleReviewRequestedPRs(for: state)
         
