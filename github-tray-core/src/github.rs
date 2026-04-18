@@ -27,9 +27,15 @@ impl GitHubClient {
     }
 
     pub async fn fetch_prs(&self) -> Result<PRList> {
-        let review_requested = self.search_prs("is:open is:pr review-requested:@me archived:false").await?;
-        let my_open = self.search_prs("is:open is:pr author:@me archived:false").await?;
-        let mentioned_in = self.search_prs("is:open is:pr mentions:@me archived:false").await?;
+        let review_requested = self
+            .search_prs("is:open is:pr review-requested:@me archived:false")
+            .await?;
+        let my_open = self
+            .search_prs("is:open is:pr author:@me archived:false")
+            .await?;
+        let mentioned_in = self
+            .search_prs("is:open is:pr mentions:@me archived:false")
+            .await?;
 
         Ok(PRList {
             review_requested,
@@ -71,7 +77,10 @@ impl GitHubClient {
 
         if let Some(errors) = graphql_response.errors {
             let error_messages: Vec<String> = errors.iter().map(|e| e.message.clone()).collect();
-            return Err(anyhow::anyhow!("GraphQL errors: {}", error_messages.join(", ")));
+            return Err(anyhow::anyhow!(
+                "GraphQL errors: {}",
+                error_messages.join(", ")
+            ));
         }
 
         let prs = graphql_response
@@ -303,22 +312,24 @@ fn map_status(commits: &CommitConnection) -> String {
         Some("FAILURE") | Some("ERROR") | Some("TIMED_OUT") | Some("ACTION_REQUIRED") => {
             "failure".to_string()
         }
-        Some("EXPECTED")
-        | Some("PENDING")
-        | Some("QUEUED")
-        | Some("IN_PROGRESS")
-        | Some("WAITING")
-        | Some("REQUESTED")
-        | Some("STALE") => "pending".to_string(),
+        Some("EXPECTED") | Some("PENDING") | Some("QUEUED") | Some("IN_PROGRESS")
+        | Some("WAITING") | Some("REQUESTED") | Some("STALE") => "pending".to_string(),
         Some("NEUTRAL") | None => "none".to_string(),
         _ => "none".to_string(),
     }
 }
 
-fn map_review_bucket(review_decision: Option<&str>, has_outstanding_review_requests: bool) -> String {
+fn map_review_bucket(
+    review_decision: Option<&str>,
+    has_outstanding_review_requests: bool,
+) -> String {
+    if has_outstanding_review_requests {
+        return "awaiting_reviewer".to_string();
+    }
+
     match review_decision {
-        Some("APPROVED") if !has_outstanding_review_requests => "approved".to_string(),
-        Some("CHANGES_REQUESTED") if !has_outstanding_review_requests => "returned_to_you".to_string(),
+        Some("APPROVED") => "approved".to_string(),
+        Some("CHANGES_REQUESTED") => "returned_to_you".to_string(),
         _ => "none".to_string(),
     }
 }
@@ -351,12 +362,31 @@ mod tests {
     }
 
     #[test]
-    fn approved_pr_with_pending_review_request_is_not_approved() {
-        assert_eq!(map_review_bucket(Some("APPROVED"), true), "none");
+    fn requested_review_without_review_decision_is_awaiting_reviewer() {
+        assert_eq!(map_review_bucket(None, true), "awaiting_reviewer");
     }
 
     #[test]
-    fn changes_requested_with_pending_review_request_is_not_returned_to_you() {
-        assert_eq!(map_review_bucket(Some("CHANGES_REQUESTED"), true), "none");
+    fn approved_pr_with_pending_review_request_is_awaiting_reviewer() {
+        assert_eq!(
+            map_review_bucket(Some("APPROVED"), true),
+            "awaiting_reviewer"
+        );
+    }
+
+    #[test]
+    fn changes_requested_with_pending_review_request_is_awaiting_reviewer() {
+        assert_eq!(
+            map_review_bucket(Some("CHANGES_REQUESTED"), true),
+            "awaiting_reviewer"
+        );
+    }
+
+    #[test]
+    fn changes_requested_without_pending_review_request_is_returned_to_you() {
+        assert_eq!(
+            map_review_bucket(Some("CHANGES_REQUESTED"), false),
+            "returned_to_you"
+        );
     }
 }

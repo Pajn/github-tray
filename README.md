@@ -8,6 +8,7 @@ GitHub Tray shows PRs in focused sections and lets you jump straight to each PR 
 
 - Shows **Review Requested** PRs in your menu bar.
 - Splits your authored PRs into:
+  - **Awaiting Reviewer**
   - **Approved**
   - **Returned to You**
   - **My Open PRs** (everything else)

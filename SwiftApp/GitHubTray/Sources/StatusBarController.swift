@@ -132,10 +132,13 @@ class StatusBarController: NSObject {
             return
         }
 
+        let awaitingReviewerMyOpen = state.prs.myOpen.filter { $0.reviewBucket == "awaiting_reviewer" }
         let approvedMyOpen = state.prs.myOpen.filter { $0.reviewBucket == "approved" }
         let returnedToYouMyOpen = state.prs.myOpen.filter { $0.reviewBucket == "returned_to_you" }
         let generalMyOpen = state.prs.myOpen.filter {
-            $0.reviewBucket != "approved" && $0.reviewBucket != "returned_to_you"
+            $0.reviewBucket != "awaiting_reviewer"
+                && $0.reviewBucket != "approved"
+                && $0.reviewBucket != "returned_to_you"
         }
         let visibleReviewRequested = visibleReviewRequestedPRs(for: state)
         
@@ -148,6 +151,15 @@ class StatusBarController: NSObject {
             menu.addItem(.separator())
         }
         
+        // Awaiting Reviewer section
+        if !awaitingReviewerMyOpen.isEmpty {
+            menu.addItem(createHeader("Awaiting Reviewer (\(awaitingReviewerMyOpen.count))"))
+            for pr in awaitingReviewerMyOpen {
+                menu.addItem(createPRItem(pr))
+            }
+            menu.addItem(.separator())
+        }
+
         // Approved section
         if !approvedMyOpen.isEmpty {
             menu.addItem(createHeader("Approved (\(approvedMyOpen.count))"))
@@ -186,6 +198,7 @@ class StatusBarController: NSObject {
         
         // No PRs message
         if visibleReviewRequested.isEmpty
+            && awaitingReviewerMyOpen.isEmpty
             && approvedMyOpen.isEmpty
             && returnedToYouMyOpen.isEmpty
             && generalMyOpen.isEmpty

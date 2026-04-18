@@ -118,7 +118,8 @@ impl GitHubTrayCore {
                 }
                 eprintln!("[Rust] Initial refresh complete");
 
-                let mut interval = tokio::time::interval(Duration::from_secs(core_clone.refresh_interval_secs));
+                let mut interval =
+                    tokio::time::interval(Duration::from_secs(core_clone.refresh_interval_secs));
                 loop {
                     interval.tick().await;
                     if let Err(e) = refresh_prs(&core_clone).await {
